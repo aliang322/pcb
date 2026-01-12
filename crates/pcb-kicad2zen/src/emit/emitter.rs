@@ -110,10 +110,12 @@ fn emit_net_declarations(out: &mut String, nets: &HashMap<String, NetType>) {
 
     for name in names {
         let var = sanitize_name(name);
+        // Sanitize net names
+        let safe_name = name.replace('.', "_");
         match &nets[name] {
-            NetType::Power => writeln!(out, "{} = Power(\"{}\")", var, name).unwrap(),
-            NetType::Ground => writeln!(out, "{} = Ground(\"{}\")", var, name).unwrap(),
-            _ => writeln!(out, "{} = Net(\"{}\")", var, name).unwrap(),
+            NetType::Power => writeln!(out, "{} = Power(\"{}\")", var, safe_name).unwrap(),
+            NetType::Ground => writeln!(out, "{} = Ground(\"{}\")", var, safe_name).unwrap(),
+            _ => writeln!(out, "{} = Net(\"{}\")", var, safe_name).unwrap(),
         }
     }
 
