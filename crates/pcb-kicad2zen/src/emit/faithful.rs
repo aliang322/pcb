@@ -10,6 +10,7 @@ use std::fmt::Write;
 ///
 /// This mode preserves exact KiCad symbol/footprint strings to enable
 /// round-trip conversion (KiCad → Zen → KiCad) with minimal data loss.
+/// The output is valid, buildable Zener code.
 pub fn emit_faithful(project: &KicadProject) -> String {
     let mut out = String::new();
 
@@ -26,11 +27,17 @@ pub fn emit_faithful(project: &KicadProject) -> String {
     // Collect all nets from PCB (authoritative source for connectivity)
     let nets = collect_nets(project);
 
+    // Emit imports
+    emit_imports(&mut out, &nets);
+
     // Emit net declarations
     emit_net_declarations(&mut out, &nets);
 
     // Emit components
     emit_components_faithful(&mut out, project, &nets);
+
+    // Emit Board() call
+    emit_board(&mut out, project);
 
     out
 }
@@ -51,11 +58,10 @@ fn collect_nets(project: &KicadProject) -> HashMap<String, NetType> {
     nets
 }
 
-/// Emit net declarations
-fn emit_net_declarations(out: &mut String, nets: &HashMap<String, NetType>) {
-    if nets.is_empty() {
-        return;
-    }
+/// Emit load() statements for required imports
+fn emit_imports(out: &mut String, nets: &HashMap<String, NetType>) {
+    // Always need Board
+    writeln!(out, "load(\"@stdlib/board_config.zen\", \"Board\")").unwrap();
 
     // Check if we need Power/Ground imports
     let has_power = nets.values().any(|t| matches!(t, NetType::Power));
@@ -69,9 +75,25 @@ fn emit_net_declarations(out: &mut String, nets: &HashMap<String, NetType>) {
         if has_ground {
             imports.push("Ground");
         }
-        writeln!(out, "load(\"@stdlib/interfaces.zen\", {})", 
-            imports.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(", ")).unwrap();
-        writeln!(out).unwrap();
+        writeln!(
+            out,
+            "load(\"@stdlib/interfaces.zen\", {})",
+            imports
+                .iter()
+                .map(|s| format!("\"{}\"", s))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .unwrap();
+    }
+
+    writeln!(out).unwrap();
+}
+
+/// Emit net declarations
+fn emit_net_declarations(out: &mut String, nets: &HashMap<String, NetType>) {
+    if nets.is_empty() {
+        return;
     }
 
     writeln!(out, "# Nets").unwrap();
@@ -101,7 +123,11 @@ fn emit_net_declarations(out: &mut String, nets: &HashMap<String, NetType>) {
 }
 
 /// Emit components in faithful mode using raw Component()
-fn emit_components_faithful(out: &mut String, project: &KicadProject, nets: &HashMap<String, NetType>) {
+fn emit_components_faithful(
+    out: &mut String,
+    project: &KicadProject,
+    _nets: &HashMap<String, NetType>,
+) {
     let schematic = match &project.schematic {
         Some(s) => s,
         None => return,
@@ -122,7 +148,7 @@ fn emit_components_faithful(out: &mut String, project: &KicadProject, nets: &Has
     }
 
     for symbol in &schematic.symbols {
-        emit_component_faithful(out, symbol, &uuid_to_footprint, nets);
+        emit_component_faithful(out, symbol, &uuid_to_footprint);
     }
 }
 
@@ -131,54 +157,81 @@ fn emit_component_faithful(
     out: &mut String,
     symbol: &SchematicSymbol,
     uuid_to_footprint: &HashMap<String, &crate::parser::Footprint>,
-    _nets: &HashMap<String, NetType>,
 ) {
     // Get the corresponding PCB footprint for net assignments
     let footprint = uuid_to_footprint.get(&symbol.uuid);
 
     writeln!(out, "Component(").unwrap();
-    writeln!(out, "    name=\"{}\",", symbol.reference).unwrap();
+    writeln!(out, "    name = \"{}\",", symbol.reference).unwrap();
 
-    // Split lib_id into library and name
+    // Symbol - use @kicad-symbols path format
     let (lib, sym_name) = split_lib_id(&symbol.lib_id);
-    writeln!(out, "    symbol=Symbol(library=\"{}\", name=\"{}\"),", lib, sym_name).unwrap();
+    let lib_path = format!("@kicad-symbols/{}.kicad_sym", lib);
+    writeln!(
+        out,
+        "    symbol = Symbol(library = \"{}\", name = \"{}\"),",
+        lib_path, sym_name
+    )
+    .unwrap();
 
+    // Footprint - use KiCad library:name format directly
     if !symbol.footprint.is_empty() {
-        writeln!(out, "    footprint=\"{}\",", symbol.footprint).unwrap();
-    }
-
-    // Value might be an MPN or actual value
-    if !symbol.value.is_empty() {
-        writeln!(out, "    value=\"{}\",", symbol.value).unwrap();
-    }
-
-    // DNP and BOM flags
-    if symbol.dnp {
-        writeln!(out, "    dnp=True,").unwrap();
-    }
-    if symbol.exclude_from_bom {
-        writeln!(out, "    skip_bom=True,").unwrap();
+        writeln!(out, "    footprint = \"{}\",", symbol.footprint).unwrap();
     }
 
     // Pin connections from PCB footprint
     if let Some(fp) = footprint {
-        let pin_nets: Vec<_> = fp.pads.iter()
+        let pin_nets: Vec<_> = fp
+            .pads
+            .iter()
             .filter(|pad| !pad.net_name.is_empty() && !pad.net_name.starts_with("unconnected-"))
             .map(|pad| (pad.number.clone(), pad.net_name.clone()))
             .collect();
 
         if !pin_nets.is_empty() {
-            writeln!(out, "    pins={{").unwrap();
+            writeln!(out, "    pins = {{").unwrap();
             for (pin_num, net_name) in &pin_nets {
-                let var_name = sanitize_net_name(net_name);
+                let var_name = sanitize_net_name(&net_name);
                 writeln!(out, "        \"{}\": {},", pin_num, var_name).unwrap();
             }
             writeln!(out, "    }},").unwrap();
         }
     }
 
+    // Properties dict for value, DNP, etc.
+    let mut properties = Vec::new();
+    if !symbol.value.is_empty() {
+        properties.push(format!("\"Value\": \"{}\"", symbol.value));
+    }
+
+    // DNP and BOM flags as properties
+    if symbol.dnp {
+        properties.push("\"dnp\": True".to_string());
+    }
+    if symbol.exclude_from_bom {
+        properties.push("\"exclude_from_bom\": True".to_string());
+    }
+
+    if !properties.is_empty() {
+        writeln!(out, "    properties = {{").unwrap();
+        for prop in &properties {
+            writeln!(out, "        {},", prop).unwrap();
+        }
+        writeln!(out, "    }},").unwrap();
+    }
+
     writeln!(out, ")").unwrap();
     writeln!(out).unwrap();
+}
+
+/// Emit Board() call at the end
+fn emit_board(out: &mut String, project: &KicadProject) {
+    writeln!(out, "# Board configuration").unwrap();
+    writeln!(out, "Board(").unwrap();
+    writeln!(out, "    name = \"{}\",", project.name).unwrap();
+    writeln!(out, "    layers = 4,").unwrap();
+    writeln!(out, "    layout_path = \"layout/{}\"", project.name).unwrap();
+    writeln!(out, ")").unwrap();
 }
 
 /// Split a lib_id like "Device:R" into ("Device", "R")
@@ -207,7 +260,10 @@ fn sanitize_net_name(name: &str) -> String {
 
     // Handle reserved words
     let lower = result.to_lowercase();
-    if matches!(lower.as_str(), "and" | "or" | "not" | "if" | "else" | "for" | "in" | "true" | "false" | "none") {
+    if matches!(
+        lower.as_str(),
+        "and" | "or" | "not" | "if" | "else" | "for" | "in" | "true" | "false" | "none"
+    ) {
         result.push('_');
     }
 

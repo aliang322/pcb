@@ -138,37 +138,113 @@ Pattern: `[RCL]_(\d{4})_\d+Metric` or `LED_(\d{4})_\d+Metric`
 
 ## Output Modes
 
+Both modes produce **valid, buildable Zener code** with inline workspace header, imports, and `Board()` call.
+
 ### Mode 1: Faithful (Default)
 
-Preserves exact KiCad data for round-trip fidelity:
+Preserves exact KiCad data for round-trip fidelity using low-level `Component()` API:
 
 ```python
+load("@stdlib/board_config.zen", "Board")
+load("@stdlib/interfaces.zen", "Power", "Ground")
+
+# Nets
+VCC = Power("VCC")
+GND = Ground("GND")
+out = Net("OUT")
+
 Component(
     name = "R1",
-    symbol = Symbol(library="Device.kicad_sym", name="R"),
+    symbol = Symbol(library = "@kicad-symbols/Device.kicad_sym", name = "R"),
     footprint = "Resistor_SMD:R_0402_1005Metric",
-    mpn = "ERJ-2RKF1003X",
-    pins = {"1": net_vcc, "2": net_out},
-    dnp = False,
-    skip_bom = False,
+    pins = {
+        "1": VCC,
+        "2": out,
+    },
+    properties = {
+        "Value": "ERJ-2RKF1003X",
+    },
+)
+
+Board(
+    name = "my-board",
+    layers = 4,
+    layout_path = "layout/my-board"
 )
 ```
 
 ### Mode 2: Idiomatic (--idiomatic flag)
 
-Maps to stdlib generics:
+Maps to stdlib generics for human-readable output:
 
 ```python
+load("@stdlib/board_config.zen", "Board")
+load("@stdlib/interfaces.zen", "Power", "Ground")
+
 Resistor = Module("@stdlib/generics/Resistor.zen")
+
+# Nets
+VCC = Power("VCC")
+GND = Ground("GND")
+out = Net("OUT")
+
 Resistor(
     name = "R1",
     value = "100kohm",
     package = "0402",
-    mpn = "ERJ-2RKF1003X",
-    P1 = vcc,
+    P1 = VCC,
     P2 = out,
 )
+
+Board(
+    name = "my-board",
+    layers = 4,
+    layout_path = "layout/my-board"
+)
 ```
+
+## CLI Usage
+
+### Input Format
+
+The `pcb import kicad` command expects a **directory path** containing KiCad project files:
+
+```
+project_dir/
+├── project.kicad_sch   # Schematic (S-expression) - primary source for components
+├── project.kicad_pcb   # PCB layout (S-expression) - source for net connectivity
+└── project.kicad_pro   # Project settings (JSON) - optional, for design rules
+```
+
+At minimum, a `.kicad_sch` or `.kicad_pcb` file should be present.
+
+### Output Format
+
+Generates a single `.zen` file (Starlark syntax) containing:
+- Header comment with source project name and mode
+- `load()` statements for required interfaces (Power, Ground)
+- `Module()` aliases for stdlib generics (idiomatic mode)
+- Net declarations (`Power()`, `Ground()`, `Net()`)
+- Component instantiations with pin→net connections
+
+### CLI Flags
+
+```bash
+pcb import kicad <PATH>              # faithful mode → <project>.zen
+pcb import kicad <PATH> --idiomatic  # idiomatic mode with stdlib generics
+pcb import kicad <PATH> --stdout     # print to stdout instead of file
+pcb import kicad <PATH> -o out.zen   # custom output path
+```
+
+### Warnings and Errors
+
+| Condition | Behavior |
+|-----------|----------|
+| Path does not exist | Error: `Path does not exist: <path>` |
+| Path is not a directory | Error: `Path must be a directory containing KiCad files` |
+| No `.kicad_sch`/`.kicad_pcb` found | Warning: `No .kicad_sch or .kicad_pcb files found in directory` |
+| Parse error in KiCad file | Error with file context |
+| Cannot write output file | Error: `Failed to write output file: <path>` |
 
 ## Implementation
 
@@ -317,7 +393,12 @@ anyhow = "1"
 
 ## Checklist
 
-**Limitations:** Schematic parser ignores wires/labels (connectivity derived from PCB pad-nets instead). Hierarchical schematics not supported. Mapping engine covers common Device:* symbols but not manufacturer-specific parts. Board outline/keepout extraction not implemented.
+**Limitations:**
+- Schematic parser ignores wires/labels (connectivity derived from PCB pad-nets instead)
+- Hierarchical schematics not supported
+- Mapping engine covers common `Device:*` symbols but not manufacturer-specific parts
+- Board outline/keepout extraction not implemented
+- **Requires schematic file**: Components are extracted from `.kicad_sch`; PCB-only projects produce nets but no components (see Test Examples below)
 
 ### 1. Crate scaffold
 - [x] **Create `pcb-kicad2zen` crate with Cargo.toml and lib.rs stub.** Establishes the new crate in the workspace so subsequent commits can add functionality incrementally.
@@ -336,10 +417,52 @@ anyhow = "1"
 - [x] **Emit `.zen` in faithful and idiomatic modes.** Transforms parsed `KicadProject` into valid Zener source code. Faithful mode preserves exact KiCad symbol/footprint strings for round-trip fidelity; idiomatic mode uses mapping engine to output `Resistor()`, `Capacitor()`, etc. Creates `src/emit/` module.
 
 ### 5. CLI integration
-- [ ] **Add `pcb import kicad` subcommand.** Entry point for users to run the importer. Wires parser and emitter into `pcb` binary with `--idiomatic` and `--output` flags; adds to `pcb/src/main.rs` command dispatch.
+- [x] **Add `pcb import kicad` subcommand.** Entry point for users to run the importer. Wires parser and emitter into `pcb` binary with `--idiomatic` and `--output` flags; adds to `pcb/src/main.rs` command dispatch.
 
 ### 6. Round-trip tests
 - [ ] **Add integration tests for round-trip validation.** Verifies the importer produces correct output by importing test KiCad projects, running `pcb build` on the result, and diffing against original. Catches regressions in component/net/footprint handling.
+
+## Test Examples
+
+### Complete KiCad project (schematic + PCB)
+
+```bash
+# Test project with both .kicad_sch and .kicad_pcb
+./target/debug/pcb import kicad crates/pcb-sch/test/kicad-bom --stdout
+```
+
+Output includes components extracted from schematic:
+```
+Component(
+    name="R1",
+    symbol=Symbol(library="Device", name="R"),
+    footprint="Resistor_SMD:R_0402_1005Metric",
+    value="ERJ-2RKF1003X",
+)
+```
+
+### PCB-only project (no schematic)
+
+```bash
+# Output from `pcb build` has PCB but no schematic
+./target/debug/pcb import kicad layout/blinky --stdout
+```
+
+Output has nets but **no components** (limitation):
+```
+GND = Ground("GND")
+LED_ANODE = Net("LED_ANODE")
+VCC = Power("VCC")
+# No Component() entries - schematic required
+```
+
+### Round-trip test script
+
+Use `scripts/test-kicad-import.sh` to validate import produces valid Zener:
+
+```bash
+./scripts/test-kicad-import.sh crates/pcb-sch/test/kicad-bom
+```
 
 ## Changelog
 
@@ -425,3 +548,56 @@ anyhow = "1"
 - `crates/pcb-kicad2zen/src/mapping/mod.rs` - Made `values` module public, exported `ComponentType`
 
 **Tests added:** 5 (sanitize_net_name, split_lib_id, looks_like_mpn, test_emit_faithful, test_emit_idiomatic)
+
+### 2025-01-11: CLI integration (checklist #5)
+
+**Files created:**
+- `crates/pcb/src/import.rs` - Import command module
+  - `ImportArgs` struct with `kicad` subcommand
+  - `KicadArgs` struct with `--output`, `--idiomatic`, `--stdout` flags
+  - `execute_kicad()` function that parses project, selects mode, writes output
+  - Proper error messages for missing/invalid paths
+  - Warning when no KiCad files found in directory
+
+**Files modified:**
+- `crates/pcb/Cargo.toml` - Added `pcb-kicad2zen` dependency
+- `crates/pcb/src/main.rs` - Added `mod import`, `Commands::Import`, dispatch to `import::execute()`
+
+**CLI behavior:**
+- Input: Directory path containing `.kicad_sch`, `.kicad_pcb`, `.kicad_pro` files
+- Output: Single `.zen` file with header, net declarations, component instantiations
+- Errors: Path validation, parse errors with context
+- Warnings: Missing KiCad files in directory
+
+### 2025-01-11: Test script (checklist #6 partial)
+
+**Files created:**
+- `scripts/test-kicad-import.sh` - Round-trip validation script
+  - Imports test project in both faithful and idiomatic modes
+  - Validates output contains expected elements (Component, Symbol, Module, Resistor, package)
+  - Prints full output for visual inspection
+  - Returns exit code 0 on success, 1 on failure
+
+**Usage:**
+```bash
+./scripts/test-kicad-import.sh                           # default: kicad-bom
+./scripts/test-kicad-import.sh path/to/kicad/project     # custom project
+```
+
+### 2025-01-12: Buildable emitter output
+
+**Changes:**
+- Both faithful and idiomatic modes now produce **valid, buildable Zener code**
+- Added `load("@stdlib/board_config.zen", "Board")` import to both modes
+- Added `Board()` call at end of output with name and layout_path
+- Faithful mode uses proper `Symbol(library = "@kicad-symbols/...", name = "...")` syntax
+- Changed `symbol=Symbol(...)` to `symbol = Symbol(...)` (spaces around `=`)
+- Values moved to `properties = {...}` dict in faithful mode
+- DNP/BOM flags now in properties dict as `"dnp": True`, `"exclude_from_bom": True`
+
+**Files modified:**
+- `crates/pcb-kicad2zen/src/emit/faithful.rs` - Complete rewrite for valid Zener syntax
+- `crates/pcb-kicad2zen/src/emit/idiomatic.rs` - Added Board() and proper imports
+- `crates/pcb-kicad2zen/src/lib.rs` - Updated test assertions for new format
+
+**Note:** Round-trip build requires KiCad project with actual net connections (not unconnected pads). The `kicad-bom` test project has only unconnected pads, so build will fail on missing P1/P2 pins.

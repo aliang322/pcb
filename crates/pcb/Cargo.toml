@@ -40,6 +40,7 @@ ariadne = { workspace = true }
 env_logger = { workspace = true }
 colored = { workspace = true }
 pcb-kicad = { workspace = true }
+pcb-kicad2zen = { workspace = true }
 open = { workspace = true }
 inquire = { workspace = true }
 pcb-ui = { workspace = true }

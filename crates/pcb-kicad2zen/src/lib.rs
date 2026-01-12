@@ -100,17 +100,23 @@ mod tests {
         assert!(output.contains("# Auto-generated from KiCad project"));
         assert!(output.contains("# Mode: faithful"));
 
+        // Should have imports
+        assert!(output.contains("load(\"@stdlib/board_config.zen\", \"Board\")"));
+
         // Should have components
         assert!(output.contains("Component("));
-        assert!(output.contains("name=\"R1\""));
-        assert!(output.contains("name=\"R2\""));
-        assert!(output.contains("name=\"R3\""));
+        assert!(output.contains("name = \"R1\""));
+        assert!(output.contains("name = \"R2\""));
+        assert!(output.contains("name = \"R3\""));
 
-        // Should have symbol info
-        assert!(output.contains("symbol=Symbol(library=\"Device\", name=\"R\")"));
+        // Should have symbol info with @kicad-symbols path
+        assert!(output.contains("symbol = Symbol(library = \"@kicad-symbols/Device.kicad_sym\", name = \"R\")"));
 
-        // R2 should have dnp
-        assert!(output.contains("dnp=True"));
+        // Should have Board() call
+        assert!(output.contains("Board("));
+
+        // R2 should have dnp in properties
+        assert!(output.contains("\"dnp\": True"));
     }
 
     #[test]
@@ -125,14 +131,20 @@ mod tests {
         assert!(output.contains("# Auto-generated from KiCad project"));
         assert!(output.contains("# Mode: idiomatic"));
 
+        // Should have imports
+        assert!(output.contains("load(\"@stdlib/board_config.zen\", \"Board\")"));
+
         // Should have module alias
         assert!(output.contains("Resistor = Module(\"@stdlib/generics/Resistor.zen\")"));
 
         // Should use Resistor() not Component()
         assert!(output.contains("Resistor("));
-        assert!(output.contains("name=\"R1\""));
+        assert!(output.contains("name = \"R1\""));
 
         // Should have package extracted
-        assert!(output.contains("package=\"0402\""));
+        assert!(output.contains("package = \"0402\""));
+
+        // Should have Board() call
+        assert!(output.contains("Board("));
     }
 }

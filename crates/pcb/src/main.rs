@@ -12,6 +12,7 @@ mod drc;
 mod file_walker;
 mod fmt;
 mod fork;
+mod import;
 mod info;
 mod ipc2581;
 mod layout;
@@ -76,6 +77,9 @@ enum Commands {
 
     /// Generate Bill of Materials (BOM)
     Bom(bom::BomArgs),
+
+    /// Import designs from external formats (KiCad, etc.)
+    Import(import::ImportArgs),
 
     /// Display workspace and board information
     Info(info::InfoArgs),
@@ -178,6 +182,7 @@ fn run() -> anyhow::Result<()> {
         Commands::Update(args) => update::execute(args),
         Commands::SelfUpdate(args) => self_update::execute(args),
         Commands::Bom(args) => bom::execute(args),
+        Commands::Import(args) => import::execute(args),
         Commands::Info(args) => info::execute(args),
         Commands::Layout(args) => layout::execute(args),
         Commands::Fmt(args) => fmt::execute(args),

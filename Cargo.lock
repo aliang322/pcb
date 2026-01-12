@@ -3783,6 +3783,7 @@ dependencies = [
  "pcb-fmt",
  "pcb-ipc2581-tools",
  "pcb-kicad",
+ "pcb-kicad2zen",
  "pcb-layout",
  "pcb-mcp",
  "pcb-sch",
