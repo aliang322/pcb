@@ -317,6 +317,8 @@ anyhow = "1"
 
 ## Checklist
 
+**Limitations:** Schematic parser ignores wires/labels (connectivity derived from PCB pad-nets instead). Hierarchical schematics not supported. Mapping engine covers common Device:* symbols but not manufacturer-specific parts. Board outline/keepout extraction not implemented.
+
 ### 1. Crate scaffold
 - [x] **Create `pcb-kicad2zen` crate with Cargo.toml and lib.rs stub.** Establishes the new crate in the workspace so subsequent commits can add functionality incrementally.
 
@@ -331,7 +333,7 @@ anyhow = "1"
   - Net type inference (`VCC`/`GND` → `Power`/`Ground`)
 
 ### 4. Zen emitters
-- [ ] **Emit `.zen` in faithful and idiomatic modes.** Transforms parsed `KicadProject` into valid Zener source code. Faithful mode preserves exact KiCad symbol/footprint strings for round-trip fidelity; idiomatic mode uses mapping engine to output `Resistor()`, `Capacitor()`, etc. Creates `src/emit/` module.
+- [x] **Emit `.zen` in faithful and idiomatic modes.** Transforms parsed `KicadProject` into valid Zener source code. Faithful mode preserves exact KiCad symbol/footprint strings for round-trip fidelity; idiomatic mode uses mapping engine to output `Resistor()`, `Capacitor()`, etc. Creates `src/emit/` module.
 
 ### 5. CLI integration
 - [ ] **Add `pcb import kicad` subcommand.** Entry point for users to run the importer. Wires parser and emitter into `pcb` binary with `--idiomatic` and `--output` flags; adds to `pcb/src/main.rs` command dispatch.
@@ -402,3 +404,24 @@ anyhow = "1"
 - `crates/pcb-kicad2zen/src/lib.rs` - Added `pub mod mapping`
 
 **Tests added:** 25 (symbols: 6, footprints: 6, values: 7, nets: 6)
+
+### 2025-01-11: Zen emitters (checklist #4)
+
+**Files created:**
+- `crates/pcb-kicad2zen/src/emit/mod.rs` - Module exports, `emit_zen()` dispatcher
+- `crates/pcb-kicad2zen/src/emit/faithful.rs` - Faithful mode emitter
+  - Emits raw `Component()` with exact KiCad symbol/footprint strings
+  - Collects nets from PCB pad assignments
+  - Emits `Power()`/`Ground()`/`Net()` declarations based on net type inference
+  - `sanitize_net_name()` for valid Zener identifiers
+- `crates/pcb-kicad2zen/src/emit/idiomatic.rs` - Idiomatic mode emitter
+  - Emits stdlib generics (`Resistor()`, `Capacitor()`, etc.) using mapping engine
+  - Emits `Module()` aliases for used generics
+  - Maps KiCad pin numbers to Zener pin names (e.g., "1"→"P1")
+  - Falls back to `Component()` for unmapped symbols
+
+**Files modified:**
+- `crates/pcb-kicad2zen/src/lib.rs` - Added `pub mod emit`, wired `to_zen()` to emitter
+- `crates/pcb-kicad2zen/src/mapping/mod.rs` - Made `values` module public, exported `ComponentType`
+
+**Tests added:** 5 (sanitize_net_name, split_lib_id, looks_like_mpn, test_emit_faithful, test_emit_idiomatic)

@@ -2,12 +2,14 @@
 //!
 //! Converts KiCad projects (`.kicad_sch`, `.kicad_pcb`, `.kicad_pro`) to Zener (`.zen`) files.
 
+pub mod emit;
 pub mod mapping;
 pub mod parser;
 
 use anyhow::{Context, Result};
 use std::path::Path;
 
+pub use emit::emit_zen;
 pub use parser::{KicadPcb, KicadPro, KicadSchematic};
 
 /// Output mode for Zen generation
@@ -76,8 +78,61 @@ impl KicadProject {
     }
 
     /// Convert the project to Zener source code
-    pub fn to_zen(&self, _mode: OutputMode) -> String {
-        // TODO: Implement in subsequent commits
-        String::new()
+    pub fn to_zen(&self, mode: OutputMode) -> String {
+        emit::emit_zen(self, mode)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_emit_faithful() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../crates/pcb-sch/test/kicad-bom");
+        let project = KicadProject::parse(&path).unwrap();
+
+        let output = project.to_zen(OutputMode::Faithful);
+
+        // Should have header
+        assert!(output.contains("# Auto-generated from KiCad project"));
+        assert!(output.contains("# Mode: faithful"));
+
+        // Should have components
+        assert!(output.contains("Component("));
+        assert!(output.contains("name=\"R1\""));
+        assert!(output.contains("name=\"R2\""));
+        assert!(output.contains("name=\"R3\""));
+
+        // Should have symbol info
+        assert!(output.contains("symbol=Symbol(library=\"Device\", name=\"R\")"));
+
+        // R2 should have dnp
+        assert!(output.contains("dnp=True"));
+    }
+
+    #[test]
+    fn test_emit_idiomatic() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../crates/pcb-sch/test/kicad-bom");
+        let project = KicadProject::parse(&path).unwrap();
+
+        let output = project.to_zen(OutputMode::Idiomatic);
+
+        // Should have header
+        assert!(output.contains("# Auto-generated from KiCad project"));
+        assert!(output.contains("# Mode: idiomatic"));
+
+        // Should have module alias
+        assert!(output.contains("Resistor = Module(\"@stdlib/generics/Resistor.zen\")"));
+
+        // Should use Resistor() not Component()
+        assert!(output.contains("Resistor("));
+        assert!(output.contains("name=\"R1\""));
+
+        // Should have package extracted
+        assert!(output.contains("package=\"0402\""));
     }
 }
