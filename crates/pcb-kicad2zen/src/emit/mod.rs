@@ -1,17 +1,15 @@
-//! Zen code emitters for KiCad projects
+//! Zener code emitter for KiCad projects
 
-mod faithful;
-mod idiomatic;
+mod emitter;
 
-pub use faithful::emit_faithful;
-pub use idiomatic::emit_idiomatic;
+pub use emitter::emit_zen;
 
-use crate::{KicadProject, OutputMode};
-
-/// Emit Zener source code from a KiCad project
-pub fn emit_zen(project: &KicadProject, mode: OutputMode) -> String {
-    match mode {
-        OutputMode::Faithful => emit_faithful(project),
-        OutputMode::Idiomatic => emit_idiomatic(project),
-    }
+/// Output mode for the emitter (kept for API compatibility, but behavior is unified)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputMode {
+    /// Use stdlib generics (Resistor, Capacitor, etc.) - recommended
+    #[default]
+    Idiomatic,
+    /// Legacy mode - same as Idiomatic (kept for backwards compatibility)
+    Faithful,
 }

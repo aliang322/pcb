@@ -58,9 +58,130 @@ pub fn extract_package(footprint: &str) -> Option<String> {
 }
 
 /// Check if a footprint represents an SMD component
+#[allow(dead_code)]
 pub fn is_smd_footprint(footprint: &str) -> bool {
     let lower = footprint.to_lowercase();
     lower.contains("smd") || lower.contains("metric") || lower.contains("_smd")
+}
+
+/// Component type inferred from footprint name
+#[derive(Debug, Clone, PartialEq)]
+pub enum FootprintComponentType {
+    Resistor,
+    Capacitor,
+    Inductor,
+    Led,
+    Diode,
+    Transistor,
+    Crystal,
+    Connector,
+    Unknown,
+}
+
+impl FootprintComponentType {
+    /// Get the stdlib module path for this component type
+    pub fn module_path(&self) -> Option<&'static str> {
+        match self {
+            FootprintComponentType::Resistor => Some("@stdlib/generics/Resistor.zen"),
+            FootprintComponentType::Capacitor => Some("@stdlib/generics/Capacitor.zen"),
+            FootprintComponentType::Inductor => Some("@stdlib/generics/Inductor.zen"),
+            FootprintComponentType::Led => Some("@stdlib/generics/Led.zen"),
+            FootprintComponentType::Diode => Some("@stdlib/generics/Diode.zen"),
+            FootprintComponentType::Crystal => Some("@stdlib/generics/Crystal.zen"),
+            _ => None,
+        }
+    }
+
+    /// Get the module name (e.g., "Resistor")
+    pub fn module_name(&self) -> Option<&'static str> {
+        match self {
+            FootprintComponentType::Resistor => Some("Resistor"),
+            FootprintComponentType::Capacitor => Some("Capacitor"),
+            FootprintComponentType::Inductor => Some("Inductor"),
+            FootprintComponentType::Led => Some("Led"),
+            FootprintComponentType::Diode => Some("Diode"),
+            FootprintComponentType::Crystal => Some("Crystal"),
+            _ => None,
+        }
+    }
+
+    /// Get the pin map for this component type (KiCad pin → Zener pin)
+    pub fn pin_map(&self) -> &[(&'static str, &'static str)] {
+        match self {
+            FootprintComponentType::Resistor => &[("1", "P1"), ("2", "P2")],
+            FootprintComponentType::Capacitor => &[("1", "P1"), ("2", "P2")],
+            FootprintComponentType::Inductor => &[("1", "P1"), ("2", "P2")],
+            FootprintComponentType::Led => &[("1", "K"), ("2", "A")],
+            FootprintComponentType::Diode => &[("1", "K"), ("2", "A")],
+            FootprintComponentType::Crystal => &[("1", "P1"), ("2", "P2")],
+            _ => &[],
+        }
+    }
+}
+
+/// Infer component type from footprint name
+///
+/// Examples:
+/// - `R_0402_1005Metric` → Resistor
+/// - `C_0603_1608Metric` → Capacitor  
+/// - `LED_0402_1005Metric` → Led
+/// - `L_0805_2012Metric` → Inductor
+pub fn infer_component_type(footprint: &str) -> FootprintComponentType {
+    // Strip library prefix if present
+    let name = footprint.split(':').last().unwrap_or(footprint);
+    let lower = name.to_lowercase();
+
+    // Check by prefix patterns
+    if name.starts_with("R_") || lower.contains("resistor") {
+        FootprintComponentType::Resistor
+    } else if name.starts_with("C_") || lower.contains("capacitor") {
+        FootprintComponentType::Capacitor
+    } else if name.starts_with("L_") || lower.contains("inductor") {
+        FootprintComponentType::Inductor
+    } else if name.starts_with("LED_") || lower.contains("led") {
+        FootprintComponentType::Led
+    } else if name.starts_with("D_") || lower.contains("diode") {
+        FootprintComponentType::Diode
+    } else if lower.contains("crystal") {
+        FootprintComponentType::Crystal
+    } else if lower.contains("conn") || lower.contains("pin_header") || lower.contains("pin_socket") {
+        FootprintComponentType::Connector
+    } else {
+        FootprintComponentType::Unknown
+    }
+}
+
+/// Infer component type from reference designator
+///
+/// Examples:
+/// - `R1` → Resistor
+/// - `C2` → Capacitor
+/// - `D1` → Led or Diode (check footprint to disambiguate)
+pub fn infer_type_from_reference(reference: &str) -> FootprintComponentType {
+    let prefix = reference.chars().take_while(|c| c.is_alphabetic()).collect::<String>();
+    
+    match prefix.as_str() {
+        "R" => FootprintComponentType::Resistor,
+        "C" => FootprintComponentType::Capacitor,
+        "L" => FootprintComponentType::Inductor,
+        "D" => FootprintComponentType::Diode, // Could be LED - check footprint
+        "Q" => FootprintComponentType::Transistor,
+        "Y" | "X" => FootprintComponentType::Crystal,
+        "J" | "P" => FootprintComponentType::Connector,
+        _ => FootprintComponentType::Unknown,
+    }
+}
+
+/// Infer component type using both footprint and reference
+pub fn infer_component_type_combined(footprint: &str, reference: &str) -> FootprintComponentType {
+    // First try footprint - more specific
+    let from_footprint = infer_component_type(footprint);
+    if from_footprint != FootprintComponentType::Unknown {
+        return from_footprint;
+    }
+
+    // Fall back to reference designator
+    infer_type_from_reference(reference)
 }
 
 #[cfg(test)]
@@ -138,5 +259,84 @@ mod tests {
         assert!(is_smd_footprint("Resistor_SMD:R_0402_1005Metric"));
         assert!(is_smd_footprint("R_0402_1005Metric"));
         assert!(!is_smd_footprint("Resistor_THT:R_Axial_DIN0207"));
+    }
+
+    #[test]
+    fn test_infer_component_type_from_footprint() {
+        assert_eq!(
+            infer_component_type("R_0402_1005Metric"),
+            FootprintComponentType::Resistor
+        );
+        assert_eq!(
+            infer_component_type("Resistor_SMD:R_0603_1608Metric"),
+            FootprintComponentType::Resistor
+        );
+        assert_eq!(
+            infer_component_type("C_0402_1005Metric"),
+            FootprintComponentType::Capacitor
+        );
+        assert_eq!(
+            infer_component_type("LED_0402_1005Metric"),
+            FootprintComponentType::Led
+        );
+        assert_eq!(
+            infer_component_type("LED_SMD:LED_0805_2012Metric"),
+            FootprintComponentType::Led
+        );
+        assert_eq!(
+            infer_component_type("L_0603_1608Metric"),
+            FootprintComponentType::Inductor
+        );
+        assert_eq!(
+            infer_component_type("D_SOD-123"),
+            FootprintComponentType::Diode
+        );
+    }
+
+    #[test]
+    fn test_infer_type_from_reference() {
+        assert_eq!(
+            infer_type_from_reference("R1"),
+            FootprintComponentType::Resistor
+        );
+        assert_eq!(
+            infer_type_from_reference("C10"),
+            FootprintComponentType::Capacitor
+        );
+        assert_eq!(
+            infer_type_from_reference("D1"),
+            FootprintComponentType::Diode
+        );
+        assert_eq!(
+            infer_type_from_reference("U5"),
+            FootprintComponentType::Unknown
+        );
+    }
+
+    #[test]
+    fn test_infer_component_type_combined() {
+        // Footprint takes precedence
+        assert_eq!(
+            infer_component_type_combined("LED_0402_1005Metric", "D1"),
+            FootprintComponentType::Led
+        );
+        // Falls back to reference when footprint unknown
+        assert_eq!(
+            infer_component_type_combined("Custom:MyFootprint", "R1"),
+            FootprintComponentType::Resistor
+        );
+    }
+
+    #[test]
+    fn test_footprint_component_type_module_path() {
+        assert_eq!(
+            FootprintComponentType::Resistor.module_path(),
+            Some("@stdlib/generics/Resistor.zen")
+        );
+        assert_eq!(
+            FootprintComponentType::Led.module_path(),
+            Some("@stdlib/generics/Led.zen")
+        );
+        assert_eq!(FootprintComponentType::Unknown.module_path(), None);
     }
 }

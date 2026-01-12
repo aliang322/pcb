@@ -288,6 +288,7 @@ pub fn map_symbol(lib_id: &str) -> Option<&'static GenericInfo> {
 }
 
 /// Get the KiCad pin number → Zener pin name mapping for a symbol
+#[allow(dead_code)]
 pub fn get_pin_map(lib_id: &str) -> HashMap<&'static str, &'static str> {
     if let Some(info) = map_symbol(lib_id) {
         info.pin_map.iter().copied().collect()

@@ -112,6 +112,7 @@ pub fn infer_net_type(name: &str) -> NetType {
 }
 
 /// Get the Zener type constructor for a net type
+#[allow(dead_code)]
 pub fn net_type_constructor(net_type: &NetType) -> &'static str {
     match net_type {
         NetType::Power => "Power",

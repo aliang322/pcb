@@ -27,13 +27,9 @@ pub struct KicadArgs {
     #[arg(value_name = "PATH", value_hint = clap::ValueHint::DirPath)]
     pub path: PathBuf,
 
-    /// Output file path (defaults to <project-name>.zen in current directory)
+    /// Output file path (defaults to <project-name>-imported.zen in current directory)
     #[arg(short, long, value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
     pub output: Option<PathBuf>,
-
-    /// Use idiomatic mode (map to stdlib generics like Resistor(), Capacitor())
-    #[arg(long)]
-    pub idiomatic: bool,
 
     /// Print to stdout instead of writing to file
     #[arg(long)]
@@ -84,23 +80,8 @@ fn execute_kicad(args: KicadArgs) -> Result<()> {
         eprintln!("  Warning: No .kicad_sch or .kicad_pcb files found in directory");
     }
 
-    // Select output mode
-    let mode = if args.idiomatic {
-        OutputMode::Idiomatic
-    } else {
-        OutputMode::Faithful
-    };
-    eprintln!(
-        "Using {} mode",
-        if args.idiomatic {
-            "idiomatic"
-        } else {
-            "faithful"
-        }
-    );
-
     // Generate Zener output
-    let zen_output = project.to_zen(mode);
+    let zen_output = project.to_zen(OutputMode::Idiomatic);
 
     // Output
     if args.stdout {
@@ -108,7 +89,7 @@ fn execute_kicad(args: KicadArgs) -> Result<()> {
     } else {
         let output_path = args.output.unwrap_or_else(|| {
             let name = project.name.clone();
-            PathBuf::from(format!("{}.zen", name))
+            PathBuf::from(format!("{}-imported.zen", name))
         });
 
         fs::write(&output_path, &zen_output)

@@ -9,18 +9,8 @@ pub mod parser;
 use anyhow::{Context, Result};
 use std::path::Path;
 
-pub use emit::emit_zen;
+pub use emit::{emit_zen, OutputMode};
 pub use parser::{KicadPcb, KicadPro, KicadSchematic};
-
-/// Output mode for Zen generation
-#[derive(Debug, Clone, Copy, Default)]
-pub enum OutputMode {
-    /// Preserve exact KiCad data for round-trip fidelity
-    #[default]
-    Faithful,
-    /// Map to stdlib generics for human-readable output
-    Idiomatic,
-}
 
 /// A parsed KiCad project
 #[derive(Debug, Default)]
@@ -89,38 +79,7 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn test_emit_faithful() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../crates/pcb-sch/test/kicad-bom");
-        let project = KicadProject::parse(&path).unwrap();
-
-        let output = project.to_zen(OutputMode::Faithful);
-
-        // Should have header
-        assert!(output.contains("# Auto-generated from KiCad project"));
-        assert!(output.contains("# Mode: faithful"));
-
-        // Should have imports
-        assert!(output.contains("load(\"@stdlib/board_config.zen\", \"Board\")"));
-
-        // Should have components
-        assert!(output.contains("Component("));
-        assert!(output.contains("name = \"R1\""));
-        assert!(output.contains("name = \"R2\""));
-        assert!(output.contains("name = \"R3\""));
-
-        // Should have symbol info with @kicad-symbols path
-        assert!(output.contains("symbol = Symbol(library = \"@kicad-symbols/Device.kicad_sym\", name = \"R\")"));
-
-        // Should have Board() call
-        assert!(output.contains("Board("));
-
-        // R2 should have dnp in properties
-        assert!(output.contains("\"dnp\": True"));
-    }
-
-    #[test]
-    fn test_emit_idiomatic() {
+    fn test_emit_zen() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../crates/pcb-sch/test/kicad-bom");
         let project = KicadProject::parse(&path).unwrap();
@@ -129,17 +88,18 @@ mod tests {
 
         // Should have header
         assert!(output.contains("# Auto-generated from KiCad project"));
-        assert!(output.contains("# Mode: idiomatic"));
 
         // Should have imports
         assert!(output.contains("load(\"@stdlib/board_config.zen\", \"Board\")"));
 
-        // Should have module alias
+        // Should have module alias for Resistor
         assert!(output.contains("Resistor = Module(\"@stdlib/generics/Resistor.zen\")"));
 
-        // Should use Resistor() not Component()
+        // Should use Resistor() generic
         assert!(output.contains("Resistor("));
         assert!(output.contains("name = \"R1\""));
+        assert!(output.contains("name = \"R2\""));
+        assert!(output.contains("name = \"R3\""));
 
         // Should have package extracted
         assert!(output.contains("package = \"0402\""));
