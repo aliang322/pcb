@@ -320,16 +320,10 @@ anyhow = "1"
 ### 1. Crate scaffold
 - [x] **Create `pcb-kicad2zen` crate with Cargo.toml and lib.rs stub.** Establishes the new crate in the workspace so subsequent commits can add functionality incrementally.
 
-### 2. Schematic parser
-- [ ] **Parse `.kicad_sch` into `KicadSchematic` struct.** Extracts symbols, properties (Reference, Value, Footprint), wires, labels, and lib_symbols using `pcb-sexpr`. This is the primary source for component definitions and connectivity.
+### 2. KiCad file parsers
+- [x] **Parse `.kicad_sch`, `.kicad_pcb`, `.kicad_pro` into structs.** Extracts symbols/properties/wires from schematic, footprint placements/pad-nets from PCB, and net classes/design rules from project JSON. Uses `pcb-sexpr` for S-expressions and `serde_json` for project file.
 
-### 3. PCB parser
-- [ ] **Parse `.kicad_pcb` into `KicadPcb` struct.** Extracts footprint placements, pad-to-net assignments, board outline, and layer stackup. Provides placement data and authoritative net connections.
-
-### 4. Project parser
-- [ ] **Parse `.kicad_pro` JSON into `KicadPro` struct.** Extracts net classes (track widths, clearances) and design rules for board configuration output.
-
-### 5. Symbol mapping
+### 3. Symbol mapping
 - [ ] **Map `lib_id` strings to stdlib generics.** Implements the symbol→generic table (`Device:R` → `Resistor.zen`) so components can be emitted as idiomatic Zener modules instead of raw `Component()`.
 
 ### 6. Footprint mapping
@@ -367,3 +361,27 @@ anyhow = "1"
 
 **Files modified:**
 - `Cargo.toml` (workspace) - Added `pcb-kicad2zen` to workspace dependencies
+
+### 2025-01-11: KiCad file parsers (checklist #2)
+
+**Files modified:**
+- `crates/pcb-kicad2zen/Cargo.toml` - Added `serde`, `serde_json` dependencies
+- `crates/pcb-kicad2zen/src/lib.rs` - Added `KicadProject::parse()` implementation, re-exports parser types
+- `crates/pcb-kicad2zen/src/parser/mod.rs` - Re-exports all parser types
+
+**Files rewritten:**
+- `crates/pcb-kicad2zen/src/parser/schematic.rs` - Full `.kicad_sch` parser
+  - `KicadSchematic`: version, uuid, lib_symbols, symbols
+  - `LibSymbol`: name, properties, pins
+  - `SchematicSymbol`: uuid, lib_id, at, reference, value, footprint, dnp, exclude_from_bom, pins
+- `crates/pcb-kicad2zen/src/parser/pcb.rs` - Full `.kicad_pcb` parser
+  - `KicadPcb`: version, thickness, layers, nets, footprints
+  - `Layer`: number, name, layer_type
+  - `Footprint`: uuid, footprint, layer, at, path, reference, value, attrs, pads
+  - `Pad`: number, pad_type, shape, at, net_id, net_name
+- `crates/pcb-kicad2zen/src/parser/project.rs` - Full `.kicad_pro` JSON parser
+  - `KicadPro`: net_classes, design_rules
+  - `NetClass`: name, track_width, clearance, via_diameter, via_drill, diff_pair_width/gap
+  - `DesignRules`: min_clearance, min_track_width, min_via_diameter, etc.
+
+**Tests added:** 3 (test_parse_schematic, test_parse_pcb, test_parse_project)

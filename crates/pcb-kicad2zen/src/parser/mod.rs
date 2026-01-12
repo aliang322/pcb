@@ -4,6 +4,6 @@ mod pcb;
 mod project;
 mod schematic;
 
-pub use pcb::KicadPcb;
-pub use project::KicadPro;
-pub use schematic::KicadSchematic;
+pub use pcb::{Footprint, KicadPcb, Layer, Pad};
+pub use project::{DesignRules, KicadPro, NetClass};
+pub use schematic::{KicadSchematic, LibPin, LibSymbol, SchematicSymbol};

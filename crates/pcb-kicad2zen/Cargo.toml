@@ -11,3 +11,5 @@ description = "KiCad to Zener importer"
 pcb-sexpr = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
