@@ -2,6 +2,7 @@
 //!
 //! Converts KiCad projects (`.kicad_sch`, `.kicad_pcb`, `.kicad_pro`) to Zener (`.zen`) files.
 
+pub mod mapping;
 pub mod parser;
 
 use anyhow::{Context, Result};

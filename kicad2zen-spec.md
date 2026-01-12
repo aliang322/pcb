@@ -323,29 +323,21 @@ anyhow = "1"
 ### 2. KiCad file parsers
 - [x] **Parse `.kicad_sch`, `.kicad_pcb`, `.kicad_pro` into structs.** Extracts symbols/properties/wires from schematic, footprint placements/pad-nets from PCB, and net classes/design rules from project JSON. Uses `pcb-sexpr` for S-expressions and `serde_json` for project file.
 
-### 3. Symbol mapping
-- [ ] **Map `lib_id` strings to stdlib generics.** Implements the symbol→generic table (`Device:R` → `Resistor.zen`) so components can be emitted as idiomatic Zener modules instead of raw `Component()`.
+### 3. Mapping engine
+- [x] **Symbol/footprint/value/net mapping utilities.** Translates KiCad conventions to Zener equivalents so idiomatic mode can emit stdlib generics with correct parameters. Creates `src/mapping/` module with:
+  - `lib_id` → stdlib generic table (`Device:R` → `Resistor.zen`)
+  - Footprint → package regex (`R_0402_1005Metric` → `"0402"`)
+  - Value normalization (`10k` → `10kohm`, `4k7` → `4.7kohm`)
+  - Net type inference (`VCC`/`GND` → `Power`/`Ground`)
 
-### 6. Footprint mapping
-- [ ] **Extract package from footprint names via regex.** Parses patterns like `R_0402_1005Metric` → `"0402"` to populate the `package` config parameter for stdlib generics.
+### 4. Zen emitters
+- [ ] **Emit `.zen` in faithful and idiomatic modes.** Transforms parsed `KicadProject` into valid Zener source code. Faithful mode preserves exact KiCad symbol/footprint strings for round-trip fidelity; idiomatic mode uses mapping engine to output `Resistor()`, `Capacitor()`, etc. Creates `src/emit/` module.
 
-### 7. Value parsing
-- [ ] **Normalize KiCad value strings to Zener units.** Converts shorthand (`10k`, `4k7`, `100n`) to explicit units (`10kohm`, `4.7kohm`, `100nF`) for correct electrical parameter handling.
+### 5. CLI integration
+- [ ] **Add `pcb import kicad` subcommand.** Entry point for users to run the importer. Wires parser and emitter into `pcb` binary with `--idiomatic` and `--output` flags; adds to `pcb/src/main.rs` command dispatch.
 
-### 8. Net type inference
-- [ ] **Infer `Power`/`Ground`/`Net` types from net names.** Pattern-matches names like `VCC`, `GND`, `*_P/*_N` to emit typed nets instead of generic `Net()`, enabling electrical checks.
-
-### 9. Faithful emitter
-- [ ] **Emit `.zen` in faithful mode (raw `Component()`).** Preserves exact KiCad symbol/footprint strings for round-trip fidelity. Default mode for dataset generation.
-
-### 10. Idiomatic emitter
-- [ ] **Emit `.zen` in idiomatic mode (stdlib generics).** Uses mapping tables to output `Resistor()`, `Capacitor()`, etc. with typed parameters. Better for human-readable output.
-
-### 11. CLI integration
-- [ ] **Add `pcb import kicad` subcommand.** Wires the parser and emitter into the main `pcb` binary with `--idiomatic` and `--output` flags.
-
-### 12. Round-trip tests
-- [ ] **Add integration tests for round-trip validation.** Imports test KiCad projects, runs `pcb build`, and compares output to verify no components/nets/footprints are lost.
+### 6. Round-trip tests
+- [ ] **Add integration tests for round-trip validation.** Verifies the importer produces correct output by importing test KiCad projects, running `pcb build` on the result, and diffing against original. Catches regressions in component/net/footprint handling.
 
 ## Changelog
 
@@ -385,3 +377,28 @@ anyhow = "1"
   - `DesignRules`: min_clearance, min_track_width, min_via_diameter, etc.
 
 **Tests added:** 3 (test_parse_schematic, test_parse_pcb, test_parse_project)
+
+### 2025-01-11: Mapping engine (checklist #3)
+
+**Files created:**
+- `crates/pcb-kicad2zen/src/mapping/mod.rs` - Module exports
+- `crates/pcb-kicad2zen/src/mapping/symbols.rs` - `lib_id` → stdlib generic mapping
+  - `GenericInfo`: module_path, module_name, pin_map, flags
+  - `map_symbol()`: Maps Device:R → Resistor.zen, Device:C → Capacitor.zen, etc.
+  - Supports: R, C, L, D, LED, Ferrite_Bead, Crystal, Thermistor, BJT, MOSFET, TestPoint
+- `crates/pcb-kicad2zen/src/mapping/footprints.rs` - Footprint → package extraction
+  - `extract_package()`: R_0402_1005Metric → "0402", LED_0805_2012Metric → "0805"
+  - Regex patterns for SMD, Crystal, SOD, SOT, QFN, SOIC, TSSOP packages
+- `crates/pcb-kicad2zen/src/mapping/values.rs` - Value normalization
+  - `normalize_value()`: 10k → 10kohm, 4k7 → 4.7kohm, 100n → 100nF
+  - `ComponentType` inference from lib_id
+  - MPN detection to avoid mangling part numbers
+- `crates/pcb-kicad2zen/src/mapping/nets.rs` - Net type inference
+  - `infer_net_type()`: VCC → Power, GND → Ground, USB_D_P → DiffPairP
+  - Regex patterns for power/ground/diffpair detection
+
+**Files modified:**
+- `crates/pcb-kicad2zen/Cargo.toml` - Added `regex` dependency
+- `crates/pcb-kicad2zen/src/lib.rs` - Added `pub mod mapping`
+
+**Tests added:** 25 (symbols: 6, footprints: 6, values: 7, nets: 6)

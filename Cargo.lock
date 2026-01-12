@@ -3944,6 +3944,7 @@ dependencies = [
  "anyhow",
  "log",
  "pcb-sexpr",
+ "regex",
  "serde",
  "serde_json",
 ]
