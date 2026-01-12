@@ -232,12 +232,17 @@ pcb build kicad-bom-imported.zen
 
 ## Future Improvements
 
-1. **Symbol library parsing**: Read `.kicad_sym` files to extract pin definitions for unknown symbols, enabling automatic `Component()` generation with correct pin_defs.
+### Board & Design Rule Extraction
 
-2. **Footprint library mapping**: Build a database mapping KiCad footprint names to stdlib packages, reducing manual package specification.
+- **Board outline**: Parse `Edge.Cuts` layer to extract board shape for `Board()` configuration
+- **Design rules**: Extract track widths, clearances, via sizes from `.kicad_pro` for `BoardConfig()`
 
-3. **IC templates**: Create stdlib templates for common ICs (regulators, op-amps, MCUs) that can be auto-detected and instantiated.
+### Module Inference for Non-Zener Projects
 
-4. **Board outline extraction**: Parse `Edge.Cuts` layer to extract board shape for `Board()` configuration.
+**Problem:** Importing KiCad projects not created from Zener produces a flat component list, losing hierarchy and reusability—e.g., an LC matching network appears as separate `Inductor`, `Capacitor`, `Resistor` calls rather than a single `MatchingNetwork` module with `io` ports.
 
-5. **Design rule import**: Extract track widths, clearances, via sizes from `.kicad_pro` for `BoardConfig()`.
+**Approach 1 - KiCad Hierarchy Hints:** Parse hierarchical sheet instances from `.kicad_sch` and detect module prefixes in net names (e.g., `MatchingNetwork.T` implies module "MatchingNetwork" with internal net "T").
+
+**Approach 2 - Topology Pattern Matching:** Build a connectivity graph and match against known subcircuit patterns (Pi/T filters, voltage dividers, decoupling clusters) to identify module boundaries and infer `io()` ports.
+
+**Approach 3 - Agentic Extraction:** Use an LLM agent to reason about circuit function, search existing `.zen` modules via RAG for similar patterns, and generate structured module code—with optional interactive refinement for complex designs.
