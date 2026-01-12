@@ -318,7 +318,7 @@ anyhow = "1"
 ## Checklist
 
 ### 1. Crate scaffold
-- [ ] **Create `pcb-kicad2zen` crate with Cargo.toml and lib.rs stub.** Establishes the new crate in the workspace so subsequent commits can add functionality incrementally.
+- [x] **Create `pcb-kicad2zen` crate with Cargo.toml and lib.rs stub.** Establishes the new crate in the workspace so subsequent commits can add functionality incrementally.
 
 ### 2. Schematic parser
 - [ ] **Parse `.kicad_sch` into `KicadSchematic` struct.** Extracts symbols, properties (Reference, Value, Footprint), wires, labels, and lib_symbols using `pcb-sexpr`. This is the primary source for component definitions and connectivity.
@@ -352,3 +352,18 @@ anyhow = "1"
 
 ### 12. Round-trip tests
 - [ ] **Add integration tests for round-trip validation.** Imports test KiCad projects, runs `pcb build`, and compares output to verify no components/nets/footprints are lost.
+
+## Changelog
+
+### 2025-01-11: Crate scaffold (checklist #1)
+
+**Files created:**
+- `crates/pcb-kicad2zen/Cargo.toml` - Crate manifest with `pcb-sexpr`, `anyhow`, `log` deps
+- `crates/pcb-kicad2zen/src/lib.rs` - `OutputMode` enum, `KicadProject` struct with stub methods
+- `crates/pcb-kicad2zen/src/parser/mod.rs` - Module re-exports
+- `crates/pcb-kicad2zen/src/parser/schematic.rs` - Stub `KicadSchematic`
+- `crates/pcb-kicad2zen/src/parser/pcb.rs` - Stub `KicadPcb`
+- `crates/pcb-kicad2zen/src/parser/project.rs` - Stub `KicadPro`
+
+**Files modified:**
+- `Cargo.toml` (workspace) - Added `pcb-kicad2zen` to workspace dependencies

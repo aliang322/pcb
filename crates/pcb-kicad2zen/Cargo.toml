@@ -1,0 +1,13 @@
+[package]
+name = "pcb-kicad2zen"
+version = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+authors = { workspace = true }
+description = "KiCad to Zener importer"
+
+[dependencies]
+pcb-sexpr = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }

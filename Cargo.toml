@@ -40,6 +40,7 @@ pcb-sim = { path = "crates/pcb-sim" }
 pcb-diode-api = { path = "crates/pcb-diode-api" }
 pcb-mcp = { path = "crates/pcb-mcp" }
 pcb-ipc2581-tools = { path = "crates/pcb-ipc2581-tools" }
+pcb-kicad2zen = { path = "crates/pcb-kicad2zen" }
 
 anyhow = "1.0"
 arboard = "3.4"
